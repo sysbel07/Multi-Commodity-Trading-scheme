@@ -1,0 +1,437 @@
+pragma solidity ^0.4.11;
+//pragma experimental ABIEncoderV2;
+contract SingleVolumeResourceTradingContract{
+    uint256 count=0; //count for all the tokens
+
+    address [] communityCenter; // admins of the system
+    struct Token{ // struct for the information of a given token
+        bytes32 UID;
+        address communityCenter;
+        address smartMarketGW;
+        address community;
+        address dev;
+    }
+    struct ProviderGW { // struct for the information of a given token
+        //bytes32 ProGW;
+        string Tender_Submit;
+        bytes32 OKey_ProGW;
+        bytes32 Nonce;
+        bytes32 ComID_ProGW;
+        bytes32 MSID_ProGW;
+    }
+     //ProviderGW [] public provGW;
+    mapping(address => ProviderGW) public provGW;
+    struct RequesterGW { // struct for the information of a given token
+        //bytes32 ReqGW;
+        bytes32 OKey_ReqGW;
+        bytes32 nonce;
+        bytes32 ComID_ReqGW;
+        bytes32 MSID_ReqGW;
+    }
+    //RequesterGW [] public requestGW;
+     mapping(address => RequesterGW) public req;
+    struct CcKey_Creation{
+        bytes32 CcKey;
+        address communityCenter;
+        address home;
+    }
+    
+    struct TSKey_Creation{
+        bytes32 TSKey;
+        address smartMarketGW;
+        address home;
+    }
+    
+    struct CSKey_Creation{
+        bytes32 CSKey;
+        address serviceZone;
+        address home;
+    }
+    
+    struct BroadcastBidding{
+        bytes32 MSID_ProGW;
+        uint256 Volume;
+        string Type;
+        string Unit;
+        uint256 Price;
+        bytes32 Nonce;
+        uint256 Timestamp;
+    }
+    BroadcastBidding [] public biddings;
+    
+    struct OKeyProGW_Creation{
+        bytes32 OKey_ProGW; 
+        address seller; 
+        bytes32 Nonce;
+    }
+    OKeyProGW_Creation [] public OKey1; 
+    
+    struct OKeyReqGW_Creation{
+        bytes32 OKey_ReqGW; 
+        address buyer; 
+        bytes32 nonce;
+    }
+    OKeyReqGW_Creation [] public OKey2; 
+    
+    struct Tender
+    {
+      // address home;
+       string Type; 
+       string Unit; 
+       uint256 Amount; 
+       uint256 Price;
+    }
+    Tender [] public tender;
+     //mapping (uint => tender) Tender;
+     //uint[] public personAccounts;
+    
+    struct SmartHomes{ // struct for the addresses of SmartHomes
+        address dev;
+        address community;
+    }
+    Token [] public Tokens ; // array of all tokens issued
+    CcKey_Creation [] public SessionKey;
+    TSKey_Creation [] public TSessionKey;
+    CSKey_Creation [] public CSessionKey;
+    
+    struct Buyer
+    {
+        bytes32 MSID_ReqGW;
+        uint256 Volume;
+        string Type;
+        string Unit;
+        uint256 Price;
+        bytes32 Nonce;
+        uint256 Timestamp;
+    }
+    mapping(bytes32 => Buyer) public bids;
+    
+    struct Seller
+    {
+        address seller;
+        bytes32 MSID_ProGW;
+        uint Volume;
+        string Type;
+        string Unit;
+        uint Price;
+        bytes32 Nonce;
+        uint Timestamp;
+    }
+    mapping(address => Seller) public sell;
+    
+    // mapping for serviceZone and their accessable homes
+    mapping (address => SmartHomes[]) public home_services;
+    // mapping for smartMarketGW and their accessable homes
+    mapping (address => SmartHomes[]) public trading_services;
+    // mapping for homes at a community
+    mapping (address => address[]) public community_homes; 
+
+    modifier onlyCommunityCenter{ // for serviceZone check at modifications
+        bool Ccenter=false;
+        for(uint256 i = 0; i < communityCenter.length;i++){
+            require (msg.sender==communityCenter[i]);{
+                Ccenter=true;
+                break;
+            }
+        }
+       require (!Ccenter);
+         //   throw;
+        //else
+        _;
+    }
+
+    function AuthenticationContract() public{
+        communityCenter.push(msg.sender); //creater of contract is the first admin
+    }
+    
+    // adding admin by other admins
+    function addCommunityCenter(address newCommunityCenter) public onlyCommunityCenter{ 
+        communityCenter.push(newCommunityCenter);
+       emit CommunityCenterAdded(newCommunityCenter,msg.sender);
+    }
+   
+    // adds a home to a given serviceZone by admin
+    function addHomeServiceMapping(address serviceZone, address home,address community) 
+                                                             public onlyCommunityCenter{ 
+        //only admin can add serviceZone and homes
+        bool homeExists=false;
+        for(uint256 i = 0; i<community_homes[community].length; i++){
+        // Check if home is added to a community already otherwise it doesn't exist
+        if(community_homes[community][i]==home){ // check the devices of a user
+            // home is mapped to a community
+               // community=home_services[msg.sender][i].community;
+                homeExists=true;
+                break;
+            }
+        }
+        if(homeExists){
+            home_services[serviceZone].push(SmartHomes(home,community));
+            emit HomeServicesMappingAdded(serviceZone,home,msg.sender,community);
+        }
+        else
+            emit HomeDoesnotExist(home,community,msg.sender);
+    }
+    
+    // adds a home to a given smartMarketGW by admin
+    function addSmartMarketMapping(address smartMarketGW, address home,address community) 
+                                                             public onlyCommunityCenter{ 
+        //only admin can add serviceZone and homes
+        bool homeExists=false;
+        for(uint256 i = 0; i<community_homes[community].length; i++){
+        // Check if home is added to a community already otherwise it doesn't exist
+        if(community_homes[community][i]==home){ // check the devices of a user
+            // home is mapped to a community
+               // community=home_services[msg.sender][i].community;
+                homeExists=true;
+                break;
+            }
+        }
+        if(homeExists){
+            trading_services[smartMarketGW].push(SmartHomes(home,community));
+            emit TradingServicesMappingAdded(smartMarketGW,home,msg.sender,community);
+        }
+        else
+            emit HomeDoesnotExist(home,community,msg.sender);
+    }
+    
+    // adds a home to a given community
+    function addHomeCommunityMapping(address community, address home) public onlyCommunityCenter{ 
+        //only admin can add serviceZone and homes
+        community_homes[community].push(home);
+        bytes32 CcKey = keccak256(abi.encodePacked(home, msg.sender));
+        SessionKey.push(CcKey_Creation(CcKey, msg.sender, home));
+        emit HomeCommunityMappingAdded(community,home,msg.sender);
+        emit Shared_SessionKey_Created(CcKey, msg.sender, home);
+    }   
+    
+     // to share the addition of new admin by who 
+    event CommunityCenterAdded(address newCommunityCenter, address addingCommunityCenter); 
+    // to share new mapping for home_services mapping added by who 
+    event HomeServicesMappingAdded(address serviceZone, address home,  address addingCommunityCenter, address community);
+    // to share new mapping for home_services mapping added by who 
+    event TradingServicesMappingAdded(address smartMarketGW, address home,  address addingCommunityCenter, address community);
+    // to share new HomeCommunity mapping added by who
+    event HomeCommunityMappingAdded(address community, address home, address addingCommunityCenter);
+    // to share the requested home doesn't exist on the system
+    event HomeDoesnotExist(address home, address community, address sender);
+    event Shared_SessionKey_Created(bytes32 CcKey, address communityCenter, address home);
+    
+    // delete a given admin
+    function deleteCommunityCenter (address Ccenter) public onlyCommunityCenter{ 
+        require(communityCenter.length>=2); {
+            uint256 i = 0;
+            while(i < communityCenter.length){
+                if(communityCenter[i]== Ccenter){
+                    delete communityCenter[i];
+                    emit communityCenterDeleted(Ccenter,msg.sender);
+                }
+                i++;
+            }
+        }
+    }
+    // delete serviceZone access to all homes
+    function deleteServiceZone(address serviceZone) public onlyCommunityCenter{ 
+        delete home_services[serviceZone];
+        emit HomeServiceAllMappingDeleted(serviceZone,msg.sender);
+    }
+
+ // delete smartMarketGW access to all homes
+    function deleteSmartMarketGW(address smartMarketGW) public onlyCommunityCenter{ 
+        delete trading_services[smartMarketGW];
+        emit TradingServiceAllMappingDeleted(smartMarketGW,msg.sender);
+    }
+
+    // delete home at a community 
+    function deleteHome(address community) public onlyCommunityCenter{ 
+        delete community_homes[community];
+       emit HomeCommunityAllMappingDeleted(community,msg.sender);
+
+    }
+    
+    // to share the deletion of an new admin by who 
+    event communityCenterDeleted(address newCommunityCenter, address deletingCommunityCenter); 
+    // to share the deletion of all home services mapping of a serviceZone added by who 
+    event HomeServiceAllMappingDeleted(address serviceZone,  address deletingCommunityCenter);
+    // to share the deletion of all home services mapping of a serviceZone added by who 
+    event TradingServiceAllMappingDeleted(address smartMarketGW,  address deletingCommunityCenter);
+     // to share the deletion all community homes mapping of a community  by who
+    event HomeCommunityAllMappingDeleted(address community, address deletingCommunityCenter);
+
+    // authetnication request
+    function requestAuthentication(address home,address community, address smartMarketGW, address serviceZone) public { 
+        // Check if home exists in HomeCommunity mapping
+        bool homeExists=false;
+        for(uint256 i = 0; i<community_homes[community].length; i++){
+            if(community_homes[community][i]==home){ // check the devices of a user
+                // home is mapped to a community
+                //community=home_services[msg.sender][i].community;
+                homeExists=true;
+                break;
+            }
+        }
+        if(!homeExists){
+            //trigger HomeDoesnotExist event
+            emit HomeDoesnotExist(home,community,msg.sender);
+            uint256 PV_Negative = 0;
+            emit HomeNotInRange(PV_Negative);
+            //trigger failed authentication event
+            emit NotAuthenticated(msg.sender);
+        }
+        else{
+            //bool auth=false;
+            //for(uint256 m = 0; m<trading_services[community].length; m++){
+              //  if(trading_services[community][m].dev==home){ 
+                // if we find home we need to find the community it belongs to
+                  //  auth=true;
+                 //   break;
+               // }
+           // }
+            //if(homeExists){ // shares successful authentication event
+                emit Authenticated(msg.sender,home,community);
+               
+                bytes32 TSKey = keccak256(abi.encodePacked(msg.sender, smartMarketGW, home, block.timestamp));
+                TSessionKey.push(TSKey_Creation(TSKey, smartMarketGW, home));
+                emit Shared_TSessionKey_Created(TSKey, smartMarketGW, home);
+                
+                bytes32 CSKey = keccak256(abi.encodePacked(msg.sender, serviceZone, home, block.timestamp));
+                CSessionKey.push(CSKey_Creation(CSKey, serviceZone, home));
+                emit Shared_CSessionKey_Created(CSKey, serviceZone, home);
+                
+                bytes32 ComID_ProGW = keccak256(abi.encodePacked(home, block.timestamp));
+                uint256 PV_Positive = 1;
+                emit PairOfID_Created(ComID_ProGW, PV_Positive);
+            //}
+            //else if(!homeExists){
+                // trigger failed authentication event
+               // emit NotAuthenticated(msg.sender);
+            //}
+        }
+    }
+     // authentication events
+    event Authenticated(address serviceZone, address home, address community); 
+    event HomeNotInRange(uint256 PV_Negative);
+    event PairOfID_Created(bytes32 ComID_ProGW, uint256 PV_Positive);
+    event NotAuthenticated(address communityCenter);
+    event Shared_TSessionKey_Created(bytes32 TSKey, address smartMarketGW, address home);
+    event Shared_CSessionKey_Created(bytes32 CSKey, address serviceZone, address home);
+    
+        
+        string  SRSV;
+        string  MRSV;
+    function SubmissionOfTender(address seller, string Type, string Unit, uint Amount, uint Price) public returns (bytes32, bytes32, bytes32){
+        //uint256 n=NumberOfResource;
+        //tender.push(Tender(Type, Unit, Amount, Price));
+         //Seller memory sell;
+        //if (n==1){
+                bytes32 MSID_ProGW=keccak256(abi.encodePacked(seller, block.timestamp));
+                bytes32 Nonce=keccak256(abi.encodePacked(block.difficulty, block.timestamp));
+                
+                //seller[Type].Type
+                sell[msg.sender].Type=Type;
+                sell[msg.sender].Unit=Unit;
+                sell[msg.sender].Volume=Amount;
+                sell[msg.sender].Price=Price;
+               sell[msg.sender].Timestamp=block.timestamp;
+                sell[msg.sender].Nonce=Nonce;
+               sell[msg.sender].MSID_ProGW=MSID_ProGW;
+                
+                biddings.push(BroadcastBidding(sell[msg.sender].MSID_ProGW, sell[msg.sender].Volume, sell[msg.sender].Type, sell[msg.sender].Unit, sell[msg.sender].Price, sell[msg.sender].Nonce, sell[msg.sender].Timestamp));
+                emit BroadcastedBidding(sell[msg.sender].MSID_ProGW, sell[msg.sender].Volume, sell[msg.sender].Type, sell[msg.sender].Unit, sell[msg.sender].Price, sell[msg.sender].Nonce, sell[msg.sender].Timestamp);
+                emit Resource_Tender_Successfully_Submitted(MRSV); 
+                
+                //CSessionKey.push(CSKey_Creation(CSKey, serviceZone, home));
+                //ProviderGW memory provGW;
+                bytes32 ComID_ProGW = keccak256(abi.encodePacked(seller, block.timestamp));
+                provGW[msg.sender].ComID_ProGW=ComID_ProGW;
+                string memory Tender_Submit= string(abi.encodePacked(ComID_ProGW, block.timestamp,Type, Unit, Amount, Price)) ;
+                provGW[msg.sender].Tender_Submit=Tender_Submit;
+                bytes32 OKey_ProGW = keccak256(abi.encodePacked(msg.sender, ComID_ProGW, block.timestamp));
+                provGW[msg.sender].OKey_ProGW=OKey_ProGW;
+                return (provGW[msg.sender].OKey_ProGW, provGW[msg.sender].ComID_ProGW, sell[msg.sender].Nonce);
+       // } 
+            
+          //  else {
+                
+             //   uint256 i;
+               // for (i=0; i<=n; i++){
+                 //   provGW.ComID_ProGW = keccak256(abi.encodePacked(seller, block.timestamp));
+                    //tender.push(Tender(Type, Unit, Amount, Price));
+                   // provGW.Tender_Submit=string(abi.encodePacked(provGW.ComID_ProGW, block.timestamp,Type, Unit, Amount, Price)) ;
+        
+                  //  provGW.OKey_ProGW = keccak256(abi.encodePacked(msg.sender, provGW.ComID_ProGW, block.timestamp));
+                  //  provGW.Nonce = keccak256(abi.encodePacked(block.difficulty, block.timestamp));
+                    //OKey1.push(OKeyProGW_Creation(OKey_ProGW, ComID_ProGW, Nonce));
+//return (provGW.OKey_ProGW, provGW.ComID_ProGW, provGW.Nonce);
+                    
+                   // provGW.MSID_ProGW = keccak256(abi.encodePacked(seller, block.timestamp));
+                    
+                   // sell.Type=Type;
+                    //sell.Unit=Unit;
+                    //sell.Volume=Amount;
+                    //sell.Price=Price;
+                    //sell.Timestamp=block.timestamp;
+                    //sell.Nonce=provGW.Nonce;
+                    //sell.MSID_ProGW=provGW.MSID_ProGW;
+                    
+                    //biddings.push(BroadcastBidding(provGW.MSID_ProGW, Amount, Type, Unit, Price, provGW.Nonce, block.timestamp));
+                    //BroadcastBidding memory brocts = biddings[];
+                    
+                    //emit ith_OKey_ProGW_Created(OKey_ProGW, ComID_ProGW, Nonce);
+                    //emit ith_BroadcastedBidding(provGW.MSID_ProGW, Amount, Type, Unit, Price, provGW.Nonce, block.timestamp);
+                    //emit TradingType2(MRSV);
+                //}
+            //}
+    } 
+    //event OKey_ProGW_Created(bytes32 OKey_ProGW, bytes32 ComID_ProGW, bytes32 Nonce);
+    event BroadcastedBidding(bytes32 MSID_ProGW, uint256 Volume, string Type, string Unit, uint256 Price, bytes32 Nonce, uint256 Timestamp);
+    //event ith_OKey_ProGW_Created(bytes32 OKey_ProGW, bytes32 ComID_ProGW, bytes32 Nonce);
+    //event ith_BroadcastedBidding(bytes32 MSID_ProGW, uint256 Volume, string Type, string Unit, uint256 Price, bytes32 Nonce, uint256 Timestamp);
+    event Resource_Tender_Successfully_Submitted(string MRSV); 
+    //event TradingType2(string O2O_MRSV);
+    
+    //checking for auction freshness and confirming the ProGW's claim
+    function Auction_Check(bytes32 _MSID_ProGW, uint256 Timestamp)
+        public view
+        returns (string)
+        {
+            //Seller memory sell;
+            if (block.timestamp> Timestamp && _MSID_ProGW==sell[msg.sender].MSID_ProGW){
+                
+            return("Auction is authentic and freshness Confirmed! You may proceed for Negociations");
+            }
+            else{
+            return("Auction freshness Not confirmed and Not authentic!");
+            }
+          
+        }
+    
+    function RegisterBuyer (address buyer) public returns(bytes32, bytes32){
+        //ProviderGW memory p;
+        //Seller memory sell;
+        //RequesterGW memory req;
+        bytes32 ComID_ReqGW = keccak256(abi.encodePacked(buyer, block.timestamp));
+        req[msg.sender].ComID_ReqGW=ComID_ReqGW;
+        bytes32 OKey_ReqGW = keccak256(abi.encodePacked(msg.sender, ComID_ReqGW, block.timestamp));
+        req[msg.sender].OKey_ReqGW=OKey_ReqGW;
+        bytes32 nonce = keccak256(abi.encodePacked(block.difficulty, block.timestamp));
+        req[msg.sender].nonce=nonce;
+        return (OKey_ReqGW, nonce);
+        bytes32 MSID_ReqGW = keccak256(abi.encodePacked(buyer, block.timestamp));
+        req[msg.sender].MSID_ReqGW=MSID_ReqGW;
+    }
+    function Buying_Resources(address buyer, uint256 Price) public payable{
+        if (Price==sell[msg.sender].Price) {
+        emit Negociations_Successful(req[msg.sender].MSID_ReqGW, sell[msg.sender].MSID_ProGW, msg.sender);
+        
+            buyer.transfer(Price);
+            emit Funds_have_been_released();
+            req[msg.sender].OKey_ReqGW=provGW[msg.sender].OKey_ProGW;
+            emit OwnshipKey_have_been_swapped();
+        }
+        
+       // b.MSID_ProGW;
+    }
+    event Negociations_Successful(bytes32 MSID_ReqGW, bytes32 MSID_ProGW, address SmGW);
+    event Funds_have_been_released();
+    event OwnshipKey_have_been_swapped();
+}
